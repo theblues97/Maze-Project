@@ -56,8 +56,12 @@ namespace ResearchFinal
         private readonly int _height;
         private readonly Random _rng;
 
-        private List<List<int>> matrix;
-        public List<List<int>> Matrix { get => matrix; set => matrix = value; }
+        StackController sc;
+        private List<Point> resList;
+
+        private readonly CellState[,] matrix;
+
+        private static CellState[,] dirMatrix;
 
         public Maze(int width, int height)
         {
@@ -69,12 +73,36 @@ namespace ResearchFinal
                     _cells[x, y] = CellState.Initial;
             _rng = new Random();
             VisitCell(_rng.Next(width), _rng.Next(height));
+
+            //Display1();
+
+            matrix = new CellState[width * 2 + 1, height * 2 + 1];
+            for (var x = 0; x < width * 2 + 1; x++)
+                for (var y = 0; y < height * 2 + 1; y++)
+                    matrix[x, y] = CellState.Initial;
+
+            for (var x = 0; x < width; x++)
+                for (var y = 0; y < height; y++)
+                {
+                    matrix[x * 2 + 1, y * 2 + 1] = _cells[x, y];
+                    if (!_cells[x, y].HasFlag(CellState.Top)) matrix[x * 2 + 1, y * 2] -= CellState.Bottom;
+                    if (!_cells[x, y].HasFlag(CellState.Left)) matrix[x * 2, y * 2 + 1] -= CellState.Right;
+                    if (!_cells[x, y].HasFlag(CellState.Right)) matrix[x * 2 + 2, y * 2 + 1] -= CellState.Left;
+                    if (!_cells[x, y].HasFlag(CellState.Bottom)) matrix[x * 2 + 1, y * 2 + 2] -= CellState.Top;
+                }
+
+
+            dirMatrix = new CellState[width * 2 + 1, height * 2 + 1];
+            for (var x = 0; x < width * 2 + 1; x++)
+                for (var y = 0; y < height * 2 + 1; y++)
+                    dirMatrix[x, y] = this[x, y];
+
+            Process();
         }
 
         public CellState this[int x, int y]
         {
-            get { return _cells[x, y]; }
-            set { _cells[x, y] = value; }
+            get { return matrix[x, y]; }
         }
 
         public IEnumerable<RemoveWallAction> GetNeighbours(Point p)
@@ -87,65 +115,143 @@ namespace ResearchFinal
 
         public void VisitCell(int x, int y)
         {
-            this[x, y] |= CellState.Visited;
-            foreach (var p in GetNeighbours(new Point(x, y)).Shuffle(_rng).Where(z => !(this[z.Neighbour.X, z.Neighbour.Y].HasFlag(CellState.Visited))))
+            _cells[x, y] |= CellState.Visited;
+            foreach (var p in GetNeighbours(new Point(x, y)).Shuffle(_rng).Where(z => !(_cells[z.Neighbour.X, z.Neighbour.Y].HasFlag(CellState.Visited))))
             {
-                this[x, y] -= p.Wall;
-                this[p.Neighbour.X, p.Neighbour.Y] -= p.Wall.OppositeWall();
+                _cells[x, y] -= p.Wall;
+                _cells[p.Neighbour.X, p.Neighbour.Y] -= p.Wall.OppositeWall();
                 VisitCell(p.Neighbour.X, p.Neighbour.Y);
             }
         }
 
-        public List<List<int>> Load()
+        //
+
+        private void Process()
         {
-            matrix = new List<List<int>>();
+            sc = new StackController();
+            resList = new List<Point>();
 
-            int[] b1 = { 1, 1 }, b2 = { 1, 0 }, b3 = { 0, 0 };
-            List<int> B1 = new List<int>(b1), B2 = new List<int>(b2), B3 = new List<int>(b3);
+            sc.Init();
+            Point sPoint = Content._sPoint;
+            Point ePoint = Content._ePoint;
+            Point rPoint = sPoint;
 
-            List<int> lLast = new List<int>();
+            while (rPoint != ePoint)
+                rPoint = Directional(rPoint);
+            resList.Add(ePoint);
 
-            for (var y = 0; y < _height; y++)
-            {
-                List<int> lTop = new List<int>(), lLeft = new List<int>();
-                
-                for (var x = 0; x < _width; x++)
-                {
-
-                    if (this[x, y].HasFlag(CellState.Top))
-                        lTop.AddRange(B1);
-                    else
-                        lTop.AddRange(B2);
-
-                    if (this[x, y].HasFlag(CellState.Left))
-                        lLeft.AddRange(B2);
-                    else
-                        lLeft.AddRange(B3);
-                }
-                if (lLast.Count() == 0)
-                    lLast = lTop;
-
-                lTop.Add(1);
-                lLeft.Add(1);
-
-                matrix.Add(new List<int>());
-                matrix[y * 2].AddRange(lTop);
-
-                matrix.Add(new List<int>());
-                matrix[y * 2 + 1].AddRange(lLeft);
-            }
-            matrix.Add(new List<int>());
-            matrix[(_height - 1) * 2 + 2].AddRange(lLast);
-
-            //foreach (List<int> ll in matrix)
-            //{
-            //    ll.ForEach(items => Debug.Write(items));
-            //    Debug.WriteLine("");
-            //}
-            return matrix;
+            DisplayResult();
         }
 
-        public void Display()
+        Point Directional(Point p)
+        {
+            Point np = new Point();
+            CellState toWall = 0;
+            int c = 0, resid;
+            if (!dirMatrix[p.X, p.Y].HasFlag(CellState.Left))
+            {
+                c++;
+                np.X = p.X - 1;
+                np.Y = p.Y;
+                toWall = CellState.Left;
+            }
+            if (!dirMatrix[p.X, p.Y].HasFlag(CellState.Top))
+            {
+                c++;
+                np.X = p.X;
+                np.Y = p.Y - 1;
+                toWall = CellState.Top;
+            }
+            if (!dirMatrix[p.X, p.Y].HasFlag(CellState.Right))
+            {
+                c++;
+                np.X = p.X + 1;
+                np.Y = p.Y;
+                toWall = CellState.Right;
+            }
+            if (!dirMatrix[p.X, p.Y].HasFlag(CellState.Bottom))
+            {
+                c++;
+                np.X = p.X;
+                np.Y = p.Y + 1;
+                toWall = CellState.Bottom;
+            }
+
+            resid = resList.Count() - 1;
+            dirMatrix[p.X, p.Y] |= toWall;
+            dirMatrix[np.X, np.Y] |= toWall.OppositeWall();
+
+            if (c == 0)
+            {
+                Note stackpeak = sc.Peak();
+                resList.RemoveRange(stackpeak.loc, resid - stackpeak.loc + 1);
+                sc.Pop();
+                return stackpeak.point;
+            }
+            else
+            {
+                resList.Add(p);
+                if (c > 1)
+                {
+                    Note stacknote = new Note();
+                    stacknote.point = p;
+                    stacknote.loc = resid + 1;
+                    sc.Push(stacknote);
+                }
+            }
+            return np;
+        }
+
+        //public List<List<int>> Load()
+        //{
+        //    matrix = new List<List<int>>();
+
+        //    int[] b1 = { 1, 1 }, b2 = { 1, 0 }, b3 = { 0, 0 };
+        //    List<int> B1 = new List<int>(b1), B2 = new List<int>(b2), B3 = new List<int>(b3);
+
+        //    List<int> lLast = new List<int>();
+
+        //    for (var y = 0; y < _height; y++)
+        //    {
+        //        List<int> lTop = new List<int>(), lLeft = new List<int>();
+
+        //        for (var x = 0; x < _width; x++)
+        //        {
+
+        //            if (this[x, y].HasFlag(CellState.Top))
+        //                lTop.AddRange(B1);
+        //            else
+        //                lTop.AddRange(B2);
+
+        //            if (this[x, y].HasFlag(CellState.Left))
+        //                lLeft.AddRange(B2);
+        //            else
+        //                lLeft.AddRange(B3);
+        //        }
+        //        if (lLast.Count() == 0)
+        //            lLast = lTop;
+
+        //        lTop.Add(1);
+        //        lLeft.Add(1);
+
+        //        matrix.Add(new List<int>());
+        //        matrix[y * 2].AddRange(lTop);
+
+        //        matrix.Add(new List<int>());
+        //        matrix[y * 2 + 1].AddRange(lLeft);
+        //    }
+        //    matrix.Add(new List<int>());
+        //    matrix[(_height - 1) * 2 + 2].AddRange(lLast);
+
+        //    //foreach (List<int> ll in matrix)
+        //    //{
+        //    //    ll.ForEach(items => Debug.Write(items));
+        //    //    Debug.WriteLine("");
+        //    //}
+        //    return matrix;
+        //}
+
+        public void Display1()
         {
             var firstLine = string.Empty;
             for (var y = 0; y < _height; y++)
@@ -154,18 +260,73 @@ namespace ResearchFinal
                 var sbMid = new StringBuilder();
                 for (var x = 0; x < _width; x++)
                 {
-                    sbTop.Append(this[x, y].HasFlag(CellState.Top) ? "11" : "10");
-                    sbMid.Append(this[x, y].HasFlag(CellState.Left) ? "10" : "00");
+                    sbTop.Append(_cells[x, y].HasFlag(CellState.Top) ? "+-" : "+ ");
+                    sbMid.Append(_cells[x, y].HasFlag(CellState.Left) ? "| " : "  ");
                 }
                 if (firstLine == string.Empty)
                 {
                     firstLine = sbTop.ToString();
                 }
-                Debug.WriteLine(sbTop + "1");
-                Debug.WriteLine(sbMid + "1");
+                Debug.WriteLine(sbTop + "+");
+                Debug.WriteLine(sbMid + "|");
             }
             Debug.Write(firstLine);
-            Debug.WriteLine(1);
+            Debug.WriteLine("+");
+        }
+
+        public void Display2()
+        {
+            for (var y = 0; y < Content._height * 2 + 1; y++)
+            {
+                for (var x = 0; x < Content._width * 2 + 1; x++)
+                {
+                    if ((int)matrix[x, y] == 15)
+                    {
+                        if (x % 2 == 0 && y % 2 == 0)
+                            Debug.Write("+");
+                        else if (x % 2 != 0)
+                            Debug.Write("-");
+                        else
+                            Debug.Write("|");
+                    }
+                    else
+                        Debug.Write(" ");
+                }
+                Debug.WriteLine("");
+            }
+        }
+
+        public void DisplayResult()
+        {
+            for (var y = 0; y < Content._height * 2 + 1; y++)
+            {
+                for (var x = 0; x < Content._width * 2 + 1; x++)
+                {
+                    Point tp = new Point(x, y);
+                    if ((int)matrix[x, y] == 15)
+                    {
+                        if (x % 2 == 0 && y % 2 == 0)
+                            Debug.Write("+");
+                        else if (x % 2 != 0)
+                            Debug.Write("-");
+                        else
+                            Debug.Write("|");
+                    }
+                   else
+                    {
+                        int t = 0;
+                        foreach (var p in resList)
+                        {
+                            if (p == tp)
+                            { Debug.Write("*"); t = 1; break; }
+                        }
+                        if (t != 1)
+                            Debug.Write(" ");
+                    }
+
+                }
+                Debug.WriteLine("");
+            }
         }
     }
 }

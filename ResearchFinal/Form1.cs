@@ -7,22 +7,18 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Diagnostics;
 
 namespace ResearchFinal
 {
     public partial class Form1 : Form
     {
-        Maze maze;
+        GameManager gameManager;
         public Form1()
         {
             InitializeComponent();
-            maze = new Maze(20, 20);
-        }
 
-        private void button1_Click(object sender, EventArgs e)
-        {
-            maze.Display();
-            maze.Load();
+            gameManager = new GameManager();           
         }
     }
 }
